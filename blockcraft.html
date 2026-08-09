@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>BlockCraft 3D</title>
+<!--
+  Once Google approves your AdSense account, uncomment this line and put in
+  your own publisher ID (the "ca-pub-XXXXXXXXXXXXXXXX" number from your
+  AdSense account):
+
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+-->
+<style>
+  * { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: #7ec0ee; touch-action: none;
+    font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  #canvas-container { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* Everything lives inside #game-root. On phones/browsers where the real
+     Screen Orientation Lock API works (mostly Android Chrome), game-root
+     just fills the viewport normally - the OS itself rotates into landscape.
+     On browsers where that API isn't available (iOS Safari has no lock()
+     support at all), this CSS rotates game-root by hand so the game still
+     renders and plays correctly in landscape even while the phone is
+     physically held upright. */
+  #game-root { position: fixed; inset: 0; overflow: hidden; }
+  @media screen and (orientation: portrait) {
+    #game-root {
+      position: absolute;
+      top: 0;
+      left: 100%;
+      width: 100vh;
+      height: 100vw;
+      transform-origin: 0 0;
+      transform: rotate(90deg);
+    }
+  }
+
+  #loading {
+    position: fixed; inset: 0; background: #7ec0ee; z-index: 100;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; gap: 14px;
+  }
+  #loading .title {
+    font-size: 34px; font-weight: 800; letter-spacing: 1px;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.25);
+  }
+  #loading .sub { font-size: 14px; opacity: 0.85; }
+  .spinner {
+    width: 34px; height: 34px; border-radius: 8px; background: #f1c40f;
+    animation: spin 1.1s linear infinite; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  }
+  @keyframes spin { 0%{transform:rotate(0deg) scale(1);} 50%{transform:rotate(180deg) scale(0.8);} 100%{transform:rotate(360deg) scale(1);} }
+
+  /* Crosshair */
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 26px; height: 26px; pointer-events: none; z-index: 15;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: rgba(255,255,255,0.95);
+    box-shadow: 0 0 3px rgba(0,0,0,0.9);
+  }
+  #crosshair::before { top: 50%; left: 2px; right: 2px; height: 2px; transform: translateY(-1px); }
+  #crosshair::after { left: 50%; top: 2px; bottom: 2px; width: 2px; transform: translateX(-1px); }
+
+  /* Full-screen drag-to-look zone (sits under all buttons) */
+  #look-zone { position: fixed; inset: 0; z-index: 3; }
+
+  /* Color palette */
+  #palette {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; z-index: 20;
+    background: rgba(20,20,30,0.55); padding: 8px 9px; border-radius: 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    backdrop-filter: blur(4px);
+  }
+  .swatch {
+    width: 26px; height: 26px; border-radius: 7px; border: 3px solid rgba(255,255,255,0.3);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35);
+    transition: transform 0.12s ease;
+  }
+  .swatch.selected {
+    border-color: #ffffff;
+    transform: scale(1.2) translateY(-4px);
+  }
+  .swatch:active, .swatch.pressed {
+    transform: scale(1.22);
+  }
+
+  /* Place / Break buttons */
+  #action-btns {
+    position: fixed; left: 16px; bottom: 90px;
+    display: flex; flex-direction: column; gap: 12px; z-index: 20;
+  }
+  .action-btn {
+    width: 52px; height: 52px; border-radius: 50%; border: none;
+    font-size: 22px; font-weight: 700; color: #fff;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .action-btn:active, .action-btn.pressed {
+    transform: scale(0.86);
+    filter: brightness(1.25);
+    box-shadow: 0 0 0 5px rgba(255,255,255,0.25), 0 2px 6px rgba(0,0,0,0.4);
+  }
+  #place-btn { background: linear-gradient(145deg, #3fcf6e, #2aa855); }
+  #break-btn { background: linear-gradient(145deg, #ef5350, #c62828); }
+
+  /* Generic control pad (used for Move and Fly groups) */
+  .pad-group {
+    position: fixed; z-index: 20; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  }
+  .pad-label {
+    font-size: 10px; font-weight: 700; color: #fff; letter-spacing: 0.5px;
+    background: rgba(20,20,30,0.5); padding: 2px 9px; border-radius: 9px;
+  }
+  .pad-btn {
+    width: 48px; height: 48px; border-radius: 12px; border: none;
+    background: rgba(20,20,30,0.55); color: #fff; font-size: 20px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pad-btn:active, .pad-btn.pressed {
+    background: rgba(255,255,255,0.4);
+    transform: scale(0.88);
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.22), 0 2px 6px rgba(0,0,0,0.35);
+  }
+
+  /* Fly pad sits on top, Move pad sits directly below it - both anchored from
+     the top so they can never drift into overlapping one another. */
+  #fly-pad { right: 14px; top: 14px; }
+
+  /* Move pad (forward/back/left/right) - anchored on the left side, well
+     above the place/break buttons (which end around bottom:206px) so the
+     two groups never overlap. */
+  #move-pad { left: 16px; bottom: 226px; }
+  #move-pad .pad-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 48px);
+    grid-template-rows: repeat(2, 48px);
+    gap: 5px;
+  }
+  #move-pad #forward-btn { grid-column: 2; grid-row: 1; }
+  #move-pad #left-btn { grid-column: 1; grid-row: 2; }
+  #move-pad #back-btn { grid-column: 2; grid-row: 2; }
+  #move-pad #right-btn { grid-column: 3; grid-row: 2; }
+
+  #hint {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: #fff; font-size: 12px; font-weight: 600;
+    background: rgba(20,20,30,0.5); padding: 6px 14px; border-radius: 20px;
+    opacity: 0.9; transition: opacity 0.5s ease; pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* Ad overlay - shown once on first interaction, then every 10 minutes.
+     This is placeholder scaffolding: drop your real AdSense/ad-network
+     markup inside #ad-slot once your site is approved. */
+  #ad-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(8,8,12,0.92);
+    align-items: center; justify-content: center;
+  }
+  #ad-slot {
+    width: min(92vw, 520px);
+    min-height: 250px;
+    background: #16181f;
+    border: 1px dashed rgba(255,255,255,0.25);
+    border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 20px;
+  }
+  #ad-label {
+    color: rgba(255,255,255,0.55); font-size: 12px; letter-spacing: 0.15em;
+    font-weight: 700; text-transform: uppercase;
+  }
+  #ad-close-btn {
+    border: none; border-radius: 22px; padding: 10px 22px;
+    background: #3fcf6e; color: #06210f; font-weight: 700; font-size: 14px;
+  }
+  #ad-close-btn:active { transform: scale(0.95); }
+</style>
+</head>
+<body>
+
+<div id="game-root">
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="title">BLOCKCRAFT</div>
+  <div class="sub">Loading world...</div>
+</div>
+
+<div id="canvas-container"></div>
+<div id="look-zone"></div>
+<div id="crosshair"></div>
+
+<div id="palette"></div>
+
+<div id="action-btns">
+  <button id="place-btn" class="action-btn">+</button>
+  <button id="break-btn" class="action-btn">&#10005;</button>
+</div>
+
+<div id="fly-pad" class="pad-group">
+  <div class="pad-label">FLY</div>
+  <button id="up-btn" class="pad-btn">&#9650;</button>
+  <button id="down-btn" class="pad-btn">&#9660;</button>
+</div>
+
+<div id="move-pad" class="pad-group">
+  <div class="pad-label">MOVE</div>
+  <div class="pad-grid">
+    <button id="forward-btn" class="pad-btn">&#9650;</button>
+    <button id="left-btn" class="pad-btn">&#9664;</button>
+    <button id="back-btn" class="pad-btn">&#9660;</button>
+    <button id="right-btn" class="pad-btn">&#9654;</button>
+  </div>
+</div>
+
+<div id="hint">Aim with the crosshair, then tap + / &#10005;</div>
+
+<div id="ad-overlay">
+  <div id="ad-slot">
+    <!--
+      PASTE YOUR REAL AD CODE HERE once AdSense approves your site, e.g.:
+
+      <ins class="adsbygoogle"
+           style="display:block"
+           data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+           data-ad-slot="XXXXXXXXXX"
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+      <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+
+      Note: plain AdSense units normally render as a banner/rectangle, not a
+      true fullscreen takeover. For a real fullscreen interstitial between
+      play sessions, Google Ad Manager's interstitial ad units are the
+      standard route - this overlay works with either kind, just drop the
+      ad network's markup in above the button below.
+    -->
+    <div id="ad-label">Advertisement</div>
+    <button id="ad-close-btn">Continue Playing &#9654;</button>
+  </div>
+</div>
+
+</div><!-- /#game-root -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="document.getElementById('loading').innerHTML='<div style=color:#fff;font-size:15px;padding:0 20px;text-align:center>Could not load the 3D library. Please check your internet connection and reload the page.</div>'"></script>
+<script>
+window.addEventListener('error', function (e) {
+  var el = document.getElementById('loading');
+  if (el && el.style.display !== 'none') {
+    el.innerHTML = '<div style="color:#fff;font-size:14px;padding:0 24px;text-align:center;line-height:1.5">An error occurred while loading the game:<br>' + (e.message || 'unknown error') + '</div>';
+    el.style.display = 'flex';
+  }
+});
+(function () {
+  "use strict";
+  if (typeof THREE === 'undefined') {
+    document.getElementById('loading').innerHTML = '<div style="color:#fff;font-size:15px;padding:0 20px;text-align:center">Could not load the 3D library. Please check your internet connection and reload the page.</div>';
+    return;
+  }
+
+  // ---------- Basic scene setup ----------
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x7ec0ee);
+  scene.fog = new THREE.Fog(0x7ec0ee, 90, 380);
+
+  var camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 600);
+  camera.position.set(0, 4, 10);
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+  // Size the renderer/camera off #game-root's own box, not the raw window.
+  // In the CSS "rotate to landscape" fallback (portrait phones without a
+  // working Screen Orientation Lock API), #game-root is rotated 90deg and
+  // its width/height are swapped relative to window.innerWidth/innerHeight.
+  // Sizing off the window directly there made the canvas the wrong shape,
+  // cropping part of the view and throwing off where the crosshair/
+  // highlight box appeared relative to what was actually drawn.
+  var gameRoot = document.getElementById('game-root');
+  function resizeToGameRoot() {
+    var w = gameRoot.clientWidth;
+    var h = gameRoot.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+  resizeToGameRoot();
+  window.addEventListener('resize', resizeToGameRoot);
+  window.addEventListener('orientationchange', function () { setTimeout(resizeToGameRoot, 200); });
+
+  // ---------- Lighting ----------
+  var hemi = new THREE.HemisphereLight(0xffffff, 0x3a2a1a, 0.95);
+  scene.add(hemi);
+  var sun = new THREE.DirectionalLight(0xffffff, 0.65);
+  sun.position.set(120, 200, 80);
+  scene.add(sun);
+
+  // ---------- Ground: 1000 x 1000 ----------
+  var GROUND_SIZE = 1000;
+  var groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE, 1, 1);
+  groundGeo.rotateX(-Math.PI / 2);
+  var groundMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  var groundMesh = new THREE.Mesh(groundGeo, groundMat);
+  groundMesh.userData = { isGround: true };
+  scene.add(groundMesh);
+
+  // Grid guide lines so player can see individual 1x1 cells nearby
+  var grid = new THREE.GridHelper(240, 240, 0xbbbbbb, 0xbbbbbb);
+  grid.material.opacity = 0.25;
+  grid.material.transparent = true;
+  grid.position.y = 0.01;
+  scene.add(grid);
+
+  // ---------- Voxel storage ----------
+  var blocksMap = new Map();     // "x,y,z" -> mesh
+  var blockMeshes = [];          // array for raycasting
+  var blockGeo = new THREE.BoxGeometry(1, 1, 1);
+  var edgesGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02));
+
+  function cellKey(x, y, z) { return x + ',' + y + ',' + z; }
+
+  // ---------- Save / load world on this device ----------
+  // NOTE: this saves to the visitor's own browser (localStorage), so their
+  // build is restored next time they open the game on the SAME phone/browser.
+  // True "save to a Google account" (so it follows them to a different
+  // device) needs a real backend (e.g. Firebase) - a bigger separate project,
+  // not something a static GitHub Pages site can do on its own.
+  var SAVE_KEY = 'blockcraft_world_v1';
+  var saveTimer = null;
+
+  function scheduleSave() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveWorld, 600);
+  }
+
+  function saveWorld() {
+    try {
+      var arr = [];
+      blocksMap.forEach(function (mesh) {
+        arr.push([mesh.userData.gx, mesh.userData.gy, mesh.userData.gz, '#' + mesh.material.color.getHexString()]);
+      });
+      localStorage.setItem(SAVE_KEY, JSON.stringify(arr));
+    } catch (e) { /* storage unavailable (e.g. private browsing) - ignore */ }
+  }
+
+  function loadWorld() {
+    try {
+      var raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return;
+      var arr = JSON.parse(raw);
+      for (var i = 0; i < arr.length; i++) {
+        placeBlockAt(arr[i][0], arr[i][1], arr[i][2], arr[i][3], true);
+      }
+    } catch (e) { /* corrupted or unavailable save - just start empty */ }
+  }
+
+  // ---------- Effects: pop-in grow + place/break particles ----------
+  var particleGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+  var particles = [];
+  var growTweens = [];
+
+  function addGrowTween(mesh) {
+    mesh.scale.setScalar(0.001);
+    growTweens.push({ mesh: mesh, t: 0, dur: 0.16 });
+  }
+
+  function updateGrowTweens(dt) {
+    for (var i = growTweens.length - 1; i >= 0; i--) {
+      var g = growTweens[i];
+      g.t += dt;
+      var p = Math.min(g.t / g.dur, 1);
+      var s = 1 - Math.pow(1 - p, 3); // ease-out
+      g.mesh.scale.setScalar(Math.max(s, 0.001));
+      if (p >= 1) growTweens.splice(i, 1);
+    }
+  }
+
+  function spawnPlaceEffect(cx, cy, cz, colorHex) {
+    // bright upward "pop" sparkles - place effect
+    var count = 10;
+    for (var i = 0; i < count; i++) {
+      var mat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.95 });
+      var m = new THREE.Mesh(particleGeo, mat);
+      m.position.set(cx + 0.5, cy + 0.5, cz + 0.5);
+      var theta = Math.random() * Math.PI * 2;
+      var speed = 1.2 + Math.random() * 1.6;
+      var vel = new THREE.Vector3(Math.cos(theta) * speed, 2.2 + Math.random() * 2.2, Math.sin(theta) * speed);
+      scene.add(m);
+      particles.push({ mesh: m, vel: vel, life: 0, maxLife: 0.4, gravity: -5, spin: null });
+    }
+  }
+
+  function spawnBreakEffect(cx, cy, cz, colorHex) {
+    // scattering fragments that fall - break/crack effect
+    var count = 14;
+    for (var i = 0; i < count; i++) {
+      var size = 0.1 + Math.random() * 0.16;
+      var geo = new THREE.BoxGeometry(size, size, size);
+      var mat = new THREE.MeshLambertMaterial({ color: colorHex, transparent: true, opacity: 1 });
+      var m = new THREE.Mesh(geo, mat);
+      m.position.set(
+        cx + 0.5 + (Math.random() - 0.5) * 0.7,
+        cy + 0.5 + (Math.random() - 0.5) * 0.7,
+        cz + 0.5 + (Math.random() - 0.5) * 0.7
+      );
+      var vel = new THREE.Vector3((Math.random() - 0.5) * 4.5, Math.random() * 3 + 1, (Math.random() - 0.5) * 4.5);
+      var spin = new THREE.Vector3(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+      scene.add(m);
+      particles.push({ mesh: m, vel: vel, life: 0, maxLife: 0.65, gravity: -9, spin: spin, ownGeo: true });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.life += dt;
+      var t = p.life / p.maxLife;
+      if (t >= 1) {
+        scene.remove(p.mesh);
+        p.mesh.material.dispose();
+        if (p.ownGeo) p.mesh.geometry.dispose();
+        particles.splice(i, 1);
+        continue;
+      }
+      p.vel.y += p.gravity * dt;
+      p.mesh.position.addScaledVector(p.vel, dt);
+      if (p.spin) {
+        p.mesh.rotation.x += p.spin.x * dt;
+        p.mesh.rotation.y += p.spin.y * dt;
+      }
+      p.mesh.material.opacity = 1 - t;
+      var scale = 1 - t * 0.5;
+      p.mesh.scale.setScalar(scale);
+    }
+  }
+
+  function placeBlockAt(cx, cy, cz, colorHex, instant) {
+    if (cy < 0) return;
+    var key = cellKey(cx, cy, cz);
+    if (blocksMap.has(key)) return;
+    var mat = new THREE.MeshLambertMaterial({ color: colorHex });
+    var mesh = new THREE.Mesh(blockGeo, mat);
+    mesh.position.set(cx + 0.5, cy + 0.5, cz + 0.5);
+    mesh.userData = { isBlock: true, gx: cx, gy: cy, gz: cz };
+    scene.add(mesh);
+    blocksMap.set(key, mesh);
+    blockMeshes.push(mesh);
+    if (!instant) {
+      addGrowTween(mesh);
+      spawnPlaceEffect(cx, cy, cz, colorHex);
+    }
+  }
+
+  function removeBlock(mesh) {
+    var key = cellKey(mesh.userData.gx, mesh.userData.gy, mesh.userData.gz);
+    var colorHex = mesh.material.color.getHex();
+    spawnBreakEffect(mesh.userData.gx, mesh.userData.gy, mesh.userData.gz, colorHex);
+    scene.remove(mesh);
+    mesh.material.dispose();
+    blocksMap.delete(key);
+    var idx = blockMeshes.indexOf(mesh);
+    if (idx > -1) blockMeshes.splice(idx, 1);
+  }
+
+  // ---------- Color palette: bright, fully distinct colours + pure black & white ----------
+  var COLORS = [
+    '#FF0000', // red
+    '#FF8A00', // orange
+    '#FFEE00', // yellow
+    '#22E522', // green
+    '#00E5D4', // cyan
+    '#0074FF', // blue
+    '#B300FF', // purple
+    '#FF19C8', // pink
+    '#000000', // black
+    '#FFFFFF'  // white
+  ];
+  var selectedColor = COLORS[0];
+  var paletteEl = document.getElementById('palette');
+  COLORS.forEach(function (c, i) {
+    var sw = document.createElement('div');
+    sw.className = 'swatch' + (i === 0 ? ' selected' : '');
+    sw.style.background = c;
+    if (c.toUpperCase() === '#FFFFFF') sw.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.5)';
+    sw.addEventListener('pointerdown', function (e) {
+      e.stopPropagation();
+      selectedColor = c;
+      Array.prototype.forEach.call(paletteEl.children, function (el) { el.classList.remove('selected'); });
+      sw.classList.add('selected');
+      sw.classList.add('pressed');
+    });
+    sw.addEventListener('pointerup', function () { sw.classList.remove('pressed'); });
+    sw.addEventListener('pointercancel', function () { sw.classList.remove('pressed'); });
+    sw.addEventListener('pointerleave', function () { sw.classList.remove('pressed'); });
+    paletteEl.appendChild(sw);
+  });
+
+  // ---------- Highlight outline (shows targeted cell) ----------
+  var highlight = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }));
+  highlight.visible = false;
+  scene.add(highlight);
+
+  var raycaster = new THREE.Raycaster();
+  var REACH = 40; // 5x the original 8-unit reach
+
+  function getTargetHit() {
+    raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+    var objects = [groundMesh].concat(blockMeshes);
+    var hits = raycaster.intersectObjects(objects, false);
+    if (hits.length > 0 && hits[0].distance <= REACH) return hits[0];
+    return null;
+  }
+
+  function updateHighlight() {
+    var hit = getTargetHit();
+    if (!hit) { highlight.visible = false; return; }
+    var obj = hit.object;
+    if (obj.userData.isBlock) {
+      highlight.position.set(obj.userData.gx + 0.5, obj.userData.gy + 0.5, obj.userData.gz + 0.5);
+      highlight.visible = true;
+    } else {
+      var cx = Math.floor(hit.point.x);
+      var cz = Math.floor(hit.point.z);
+      highlight.position.set(cx + 0.5, 0.5, cz + 0.5);
+      highlight.visible = true;
+    }
+  }
+
+  function doPlace() {
+    var hit = getTargetHit();
+    if (!hit) return;
+    var obj = hit.object;
+    var target;
+    if (obj.userData.isBlock) {
+      var n = hit.face.normal;
+      target = {
+        x: obj.userData.gx + Math.round(n.x),
+        y: obj.userData.gy + Math.round(n.y),
+        z: obj.userData.gz + Math.round(n.z)
+      };
+    } else {
+      target = { x: Math.floor(hit.point.x), y: 0, z: Math.floor(hit.point.z) };
+    }
+    var camCell = {
+      x: Math.floor(camera.position.x), y: Math.floor(camera.position.y), z: Math.floor(camera.position.z)
+    };
+    if (target.x === camCell.x && target.y === camCell.y && target.z === camCell.z) return;
+    placeBlockAt(target.x, target.y, target.z, selectedColor);
+    scheduleSave();
+  }
+
+  function doBreak() {
+    var hit = getTargetHit();
+    if (!hit) return;
+    if (hit.object.userData.isBlock) { removeBlock(hit.object); scheduleSave(); }
+  }
+
+  function bindTap(el, onFire) {
+    el.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.add('pressed');
+      onFire();
+    });
+    var clear = function () { el.classList.remove('pressed'); };
+    el.addEventListener('pointerup', clear);
+    el.addEventListener('pointercancel', clear);
+    el.addEventListener('pointerleave', clear);
+  }
+  bindTap(document.getElementById('place-btn'), doPlace);
+  bindTap(document.getElementById('break-btn'), doBreak);
+
+  // ---------- Look controls (drag anywhere on screen, Free-Fire style) ----------
+  var yaw = 0, pitch = 0;
+  var lookPointerId = null, lastLookX = 0, lastLookY = 0;
+  var LOOK_SENSITIVITY = 0.0035;
+  var lookZone = document.getElementById('look-zone');
+
+  // When the CSS "rotate to landscape" fallback (see #game-root CSS) is
+  // active, screen coordinates are turned 90deg relative to the game world,
+  // so a raw drag has to be re-mapped onto the correct look axes.
+  var portraitMQ = window.matchMedia('(orientation: portrait)');
+  var rotateHackActive = portraitMQ.matches;
+  function syncRotateHackState() { rotateHackActive = portraitMQ.matches; }
+  if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', syncRotateHackState);
+  else if (portraitMQ.addListener) portraitMQ.addListener(syncRotateHackState);
+
+  // ---------- Pinch-to-move state (pinch-out/zoom-in = forward,
+  // pinch-in/zoom-out = backward), Free-Fire style two-finger gesture on the
+  // same look-zone used for dragging to look around. ----------
+  var activePointers = new Map(); // pointerId -> {x, y}
+  var pinchStartDist = null;
+  var pinchDist = 0;
+  var PINCH_PIXEL_TO_WORLD = 0.045; // world units moved per pixel the pinch distance changes - keeps movement matched 1:1 with actual finger travel instead of a slow time-based ramp
+  var PINCH_DEAD_ZONE = 6;  // px of finger movement before it registers as pinch
+
+  function currentPinchDistance() {
+    var pts = Array.from(activePointers.values());
+    if (pts.length < 2) return null;
+    var dx = pts[0].x - pts[1].x;
+    var dy = pts[0].y - pts[1].y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  lookZone.addEventListener('pointerdown', function (e) {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.size === 2) {
+      // Second finger down: start a pinch gesture, and hand off look-drag
+      // control so a single-finger drag doesn't fight with the pinch.
+      lookPointerId = null;
+      pinchStartDist = currentPinchDistance();
+      return;
+    }
+    if (lookPointerId !== null) return;
+    lookPointerId = e.pointerId;
+    lastLookX = e.clientX;
+    lastLookY = e.clientY;
+  });
+  window.addEventListener('pointermove', function (e) {
+    if (activePointers.has(e.pointerId)) {
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    if (activePointers.size === 2) {
+      pinchDist = currentPinchDistance();
+      return;
+    }
+    if (e.pointerId !== lookPointerId) return;
+    var dx = e.clientX - lastLookX;
+    var dy = e.clientY - lastLookY;
+    lastLookX = e.clientX;
+    lastLookY = e.clientY;
+    if (rotateHackActive) {
+      yaw -= dy * LOOK_SENSITIVITY;
+      pitch += dx * LOOK_SENSITIVITY;
+    } else {
+      yaw -= dx * LOOK_SENSITIVITY;
+      pitch -= dy * LOOK_SENSITIVITY;
+    }
+    var limit = Math.PI / 2 - 0.02;
+    if (pitch > limit) pitch = limit;
+    if (pitch < -limit) pitch = -limit;
+  });
+  function clearLookPointer(e) {
+    if (e.pointerId === lookPointerId) lookPointerId = null;
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) {
+      pinchStartDist = null;
+      pinchDist = 0;
+    }
+  }
+  window.addEventListener('pointerup', clearLookPointer);
+  window.addEventListener('pointercancel', clearLookPointer);
+
+  // ---------- Fly (up/down) hold-buttons ----------
+  var upPressed = false, downPressed = false;
+  function bindHold(el, onDown, onUp) {
+    el.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.add('pressed');
+      onDown();
+    });
+    var release = function () { el.classList.remove('pressed'); onUp(); };
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('pointerleave', release);
+  }
+  bindHold(document.getElementById('up-btn'), function () { upPressed = true; }, function () { upPressed = false; });
+  bindHold(document.getElementById('down-btn'), function () { downPressed = true; }, function () { downPressed = false; });
+
+  // ---------- Move (forward/back/left/right) hold-buttons ----------
+  var forwardPressed = false, backwardPressed = false, leftPressed = false, rightPressed = false;
+  bindHold(document.getElementById('forward-btn'), function () { forwardPressed = true; }, function () { forwardPressed = false; });
+  bindHold(document.getElementById('back-btn'), function () { backwardPressed = true; }, function () { backwardPressed = false; });
+  bindHold(document.getElementById('left-btn'), function () { leftPressed = true; }, function () { leftPressed = false; });
+  bindHold(document.getElementById('right-btn'), function () { rightPressed = true; }, function () { rightPressed = false; });
+
+
+  // ---------- Movement + render loop ----------
+  var FLY_SPEED = 7;
+  var MOVE_SPEED = 7;
+  var clock = new THREE.Clock();
+  var _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  var _dir = new THREE.Vector3();
+  var _moveEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  var _fwdDir = new THREE.Vector3();
+  var _rightDir = new THREE.Vector3();
+  var _moveDir = new THREE.Vector3();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    var dt = Math.min(clock.getDelta(), 0.08);
+
+    _euler.set(pitch, yaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(_euler);
+
+    // Pinch to move: fingers spreading apart (zoom in) drives the camera
+    // forward along the look direction; fingers pinching together (zoom
+    // out) drives it backward. Speed scales with how fast the pinch changes.
+    if (pinchStartDist !== null && activePointers.size === 2) {
+      var delta = pinchDist - pinchStartDist;
+      if (Math.abs(delta) > PINCH_DEAD_ZONE) {
+        _dir.set(0, 0, -1).applyEuler(_euler);
+        camera.position.addScaledVector(_dir, delta * PINCH_PIXEL_TO_WORLD);
+      }
+      pinchStartDist = pinchDist;
+    }
+    // Up/down: direct vertical control regardless of look direction
+    if (upPressed) camera.position.y += FLY_SPEED * dt;
+    if (downPressed) camera.position.y -= FLY_SPEED * dt;
+
+    // Forward/back/left/right: horizontal movement relative to where the
+    // camera is facing (yaw only, so looking up/down doesn't tilt movement)
+    if (forwardPressed || backwardPressed || leftPressed || rightPressed) {
+      _moveEuler.set(0, yaw, 0, 'YXZ');
+      _fwdDir.set(0, 0, -1).applyEuler(_moveEuler);
+      _rightDir.set(1, 0, 0).applyEuler(_moveEuler);
+      _moveDir.set(0, 0, 0);
+      if (forwardPressed) _moveDir.add(_fwdDir);
+      if (backwardPressed) _moveDir.sub(_fwdDir);
+      if (rightPressed) _moveDir.add(_rightDir);
+      if (leftPressed) _moveDir.sub(_rightDir);
+      if (_moveDir.lengthSq() > 0) {
+        _moveDir.normalize();
+        camera.position.addScaledVector(_moveDir, MOVE_SPEED * dt);
+      }
+    }
+
+    updateHighlight();
+    updateParticles(dt);
+    updateGrowTweens(dt);
+    renderer.render(scene, camera);
+  }
+
+  // ---------- Ad overlay: first touch, then every 10 minutes ----------
+  var AD_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+  var adOverlay = document.getElementById('ad-overlay');
+  var adCloseBtn = document.getElementById('ad-close-btn');
+  var adShowing = false;
+  var firstAdShown = false;
+
+  function showAd() {
+    if (adShowing) return;
+    adShowing = true;
+    // Clear any held movement so nothing keeps moving silently behind the ad,
+    // and cancel any in-progress look-drag or pinch gesture.
+    upPressed = downPressed = false;
+    forwardPressed = backwardPressed = leftPressed = rightPressed = false;
+    lookPointerId = null;
+    activePointers.clear();
+    pinchStartDist = null;
+    pinchDist = 0;
+    adOverlay.style.display = 'flex';
+    // TODO: if your ad network needs an explicit JS call to render/refresh
+    // its ad each time (rather than auto-rendering once the element is
+    // visible), trigger that call here.
+  }
+
+  function hideAd() {
+    adShowing = false;
+    adOverlay.style.display = 'none';
+  }
+
+  adCloseBtn.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    hideAd();
+  });
+
+  function startAdSchedule() {
+    if (firstAdShown) return;
+    firstAdShown = true;
+    showAd();
+    setInterval(showAd, AD_INTERVAL_MS);
+  }
+
+  // ---------- Try to force landscape on first touch ----------
+  // Real orientation lock (screen.orientation.lock) only works in fullscreen
+  // and mostly on Android Chrome; iOS Safari has no such API at all. The CSS
+  // rotate fallback (see #game-root in <style>) covers those other cases.
+  function tryLockLandscape() {
+    var el = document.documentElement;
+    var request = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+    function afterFullscreen() {
+      try {
+        if (screen.orientation && screen.orientation.lock) {
+          screen.orientation.lock('landscape').catch(function () {});
+        }
+      } catch (e) {}
+    }
+    try {
+      if (request) {
+        var res = request.call(el);
+        if (res && res.then) { res.then(afterFullscreen)['catch'](function () {}); }
+        else { afterFullscreen(); }
+      } else {
+        afterFullscreen();
+      }
+    } catch (e) {}
+  }
+
+  window.addEventListener('pointerdown', function onceFn() {
+    tryLockLandscape();
+    startAdSchedule();
+    window.removeEventListener('pointerdown', onceFn);
+  }, { once: true });
+
+  loadWorld();
+
+  document.getElementById('loading').style.display = 'none';
+  var hintEl = document.getElementById('hint');
+  setTimeout(function () { hintEl.style.opacity = '0'; }, 5000);
+
+  animate();
+})();
+</script>
+</body>
+</html>

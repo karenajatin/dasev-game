@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Fun Zone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div class="grain"></div>
+
+<div class="page-wrap">
+  <a href="index.html" class="page-back">← Back to FUN ZONE</a>
+  <p class="page-eyebrow">PRIVACY POLICY</p>
+  <h1 class="page-title">Privacy Policy</h1>
+  <div class="page-body">
+    <p>Last updated: <span id="update-date"></span></p>
+    <p>Fun Zone ("we", "us", "our") respects the privacy of everyone who visits this website. This policy explains what information we collect and how it is used.</p>
+
+    <h2>Information we collect</h2>
+    <ul>
+      <li>Non-personal technical data such as browser type, device type, and general location</li>
+      <li>Usage data such as page views, games played, and time spent on the site</li>
+      <li>Data collected through cookies and similar technologies</li>
+    </ul>
+
+    <h2>Google AdSense and cookies</h2>
+    <p>This site may use or plan to use Google AdSense to display advertising. Google and its partners may use cookies to serve ads based on your prior visits to this or other websites. You can opt out of personalized advertising by visiting <a href="https://adssettings.google.com" target="_blank" rel="noopener">Google Ads Settings</a>.</p>
+
+    <h2>How we use information</h2>
+    <p>Collected data is used only to improve the site, design new fun-zone activities, and fix technical issues. We do not sell your personal data to third parties.</p>
+
+    <h2>Third-party links</h2>
+    <p>Our site may contain links to other websites. We are not responsible for the privacy practices of those sites.</p>
+
+    <h2>Children's privacy</h2>
+    <p>This site does not knowingly collect personal information from children under the age of 13.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>We may update this policy from time to time. Any changes will be posted on this page.</p>
+
+    <h2>Contact</h2>
+    <p>If you have any questions about privacy, please reach out via the <a href="contact.html">Contact Us</a> page.</p>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <nav class="footer-links">
+    <a href="about.html">About Us</a>
+    <a href="privacy.html">Privacy Policy</a>
+    <a href="terms.html">Terms &amp; Conditions</a>
+    <a href="contact.html">Contact Us</a>
+  </nav>
+  <p class="footer-copy">© <span id="year"></span> Fun Zone. All rights reserved.</p>
+</footer>
+
+<script src="script.js"></script>
+<script>
+  document.getElementById('update-date').textContent = new Date().toLocaleDateString('en-GB', { year:'numeric', month:'long', day:'numeric' });
+</script>
+</body>
+</html>

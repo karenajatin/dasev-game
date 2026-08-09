@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Labyrinth 3D - Escape the Maze</title>
+<!--
+  Once Google approves your AdSense account, uncomment this line and put in
+  your own publisher ID (the "ca-pub-XXXXXXXXXXXXXXXX" number from your
+  AdSense account):
+
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+-->
+<style>
+  * { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: #bfe3ff; touch-action: none;
+    font-family: 'Segoe UI', Roboto, -apple-system, sans-serif;
+  }
+  #canvas-container { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  #game-root { position: fixed; inset: 0; overflow: hidden; }
+  @media screen and (orientation: portrait) {
+    #game-root {
+      position: absolute;
+      top: 0;
+      left: 100%;
+      width: 100vh;
+      height: 100vw;
+      transform-origin: 0 0;
+      transform: rotate(90deg);
+    }
+  }
+
+  /* ---------- Loading ---------- */
+  #loading {
+    position: fixed; inset: 0; background: #bfe3ff; z-index: 200;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #1a2a3a; gap: 16px;
+  }
+  #loading .title {
+    font-size: 30px; font-weight: 800; letter-spacing: 3px;
+    color: #e8b95b; text-shadow: 0 0 18px rgba(232,185,91,0.55), 0 3px 0 rgba(0,0,0,0.5);
+  }
+  #loading .sub { font-size: 13px; opacity: 0.75; letter-spacing: 1px; }
+  .torch-spinner {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: radial-gradient(circle, #ffd27a 0%, #e8843a 55%, transparent 75%);
+    animation: flicker 0.9s ease-in-out infinite;
+  }
+  @keyframes flicker { 0%,100%{ transform: scale(1); opacity: 1; } 50%{ transform: scale(0.82); opacity: 0.7; } }
+
+  /* ---------- Crosshair-free: not needed for maze, but keep subtle center dot ---------- */
+
+  /* ---------- Full-screen drag-to-look zone ---------- */
+  #look-zone { position: fixed; inset: 0; z-index: 3; }
+
+  /* ---------- Compass (top center) ---------- */
+  #compass-wrap {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 20; width: 180px; height: 34px; overflow: hidden;
+    border-radius: 8px; background: rgba(10,10,16,0.55); border: 1px solid rgba(232,185,91,0.35);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    pointer-events: none;
+  }
+  #compass-strip {
+    position: absolute; top: 0; left: 50%; height: 100%;
+    display: flex; align-items: center; white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700;
+    color: #cbb98a; letter-spacing: 2px;
+  }
+  #compass-strip span { display: inline-block; width: 45px; text-align: center; }
+  #compass-strip span.major { color: #e8b95b; }
+  #compass-center-mark {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 2px; height: 100%; background: rgba(255,110,90,0.85);
+  }
+
+  /* ---------- HUD top-left: level / timer ---------- */
+  #hud {
+    position: fixed; top: 14px; left: 14px; z-index: 20;
+    color: #d9c9a3; font-family: 'JetBrains Mono', monospace;
+    background: rgba(10,10,16,0.55); border: 1px solid rgba(232,185,91,0.3);
+    border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.5;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  }
+  #hud .lvl { color: #e8b95b; font-weight: 700; font-size: 13px; }
+  #hud .timer { font-variant-numeric: tabular-nums; }
+
+  /* ---------- Pad groups (reuse BlockCraft-style hold buttons) ---------- */
+  .pad-group {
+    position: fixed; z-index: 20; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .pad-label {
+    font-size: 10px; letter-spacing: 2px; color: rgba(217,201,163,0.6);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  #fly-pad { right: 16px; bottom: 90px; }
+  #move-pad { left: 16px; bottom: 26px; }
+  .pad-btn {
+    width: 52px; height: 52px; border-radius: 12px; border: none;
+    background: rgba(30,24,18,0.72); color: #e8b95b; font-size: 20px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(232,185,91,0.35);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pad-btn:active, .pad-btn.pressed {
+    background: rgba(232,185,91,0.35); transform: scale(0.94);
+  }
+  .pad-grid {
+    display: grid; grid-template-columns: 52px 52px 52px; grid-template-rows: 52px 52px;
+    gap: 6px;
+    grid-template-areas:
+      ".    fwd  .   "
+      "left back right";
+  }
+  #forward-btn { grid-area: fwd; }
+  #left-btn { grid-area: left; }
+  #back-btn { grid-area: back; }
+  #right-btn { grid-area: right; }
+
+  #hint {
+    position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: rgba(217,201,163,0.55); font-size: 11px;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px;
+    pointer-events: none; text-align: center; width: 90%;
+  }
+
+  /* ---------- Level select / win / menu overlays ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 100; display: none;
+    align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(20,16,10,0.92) 0%, rgba(6,5,8,0.97) 100%);
+    backdrop-filter: blur(3px);
+    overflow-y: auto;
+  }
+  .overlay.show { display: flex; }
+  .panel {
+    max-width: 460px; width: 90%; margin: 20px;
+    background: linear-gradient(180deg, rgba(28,22,16,0.9), rgba(14,11,8,0.95));
+    border: 1px solid rgba(232,185,91,0.35);
+    border-radius: 16px; padding: 26px 22px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 0 40px rgba(232,185,91,0.04);
+    color: #e9dcc0;
+    text-align: center;
+  }
+  .panel h1 {
+    font-size: 26px; margin: 0 0 6px; letter-spacing: 2px; color: #e8b95b;
+    text-shadow: 0 0 18px rgba(232,185,91,0.4);
+  }
+  .panel .tagline { font-size: 12.5px; color: rgba(217,201,163,0.65); margin-bottom: 20px; letter-spacing: 0.5px; }
+  .level-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 6px;
+  }
+  .level-btn {
+    aspect-ratio: 1; border-radius: 10px; border: 1px solid rgba(232,185,91,0.3);
+    background: rgba(232,185,91,0.06); color: #e9dcc0; font-family: 'JetBrains Mono', monospace;
+    font-size: 15px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  }
+  .level-btn .diff { font-size: 9px; letter-spacing: 1px; opacity: 0.6; font-weight: 400; }
+  .level-btn.locked { opacity: 0.35; }
+  .level-btn.cleared { border-color: rgba(120,220,140,0.6); color: #a7f0b6; }
+  .level-btn:active:not(.locked) { background: rgba(232,185,91,0.22); }
+  .big-btn {
+    width: 100%; padding: 14px; border-radius: 10px; border: none; margin-top: 16px;
+    background: linear-gradient(180deg, #e8b95b, #c9932f); color: #241a0c; font-weight: 700;
+    font-size: 15px; letter-spacing: 1px; box-shadow: 0 6px 16px rgba(232,185,91,0.25);
+  }
+  .big-btn:active { transform: scale(0.98); }
+  .ghost-btn {
+    width: 100%; padding: 12px; border-radius: 10px; margin-top: 10px;
+    background: transparent; border: 1px solid rgba(217,201,163,0.3); color: rgba(217,201,163,0.8);
+    font-size: 13px;
+  }
+  .stat-row { display: flex; justify-content: space-between; font-size: 13px; color: rgba(217,201,163,0.8); margin: 4px 0; font-family: 'JetBrains Mono', monospace; }
+  .stat-row b { color: #e8b95b; }
+
+  /* Pause button top-right */
+  #pause-btn {
+    position: fixed; top: 14px; right: 14px; z-index: 21;
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(232,185,91,0.35);
+    background: rgba(10,10,16,0.55); color: #e8b95b; font-size: 15px;
+  }
+
+  #ad-overlay {
+    position: fixed; inset: 0; z-index: 150; display: none;
+    align-items: center; justify-content: center; background: rgba(4,3,2,0.94);
+  }
+  #ad-overlay.show { display: flex; }
+  #ad-slot {
+    width: min(92vw, 420px); min-height: 220px; background: rgba(22,18,12,0.9);
+    border: 1px solid rgba(232,185,91,0.3); border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    padding: 20px;
+  }
+  #ad-label { color: rgba(217,201,163,0.55); font-size: 12px; letter-spacing: 2px; }
+  #ad-close-btn {
+    padding: 12px 22px; border-radius: 10px; border: none;
+    background: linear-gradient(180deg, #e8b95b, #c9932f); color: #241a0c; font-weight: 700; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-root">
+
+<div id="loading">
+  <div class="title">LABYRINTH 3D</div>
+  <div class="torch-spinner"></div>
+  <div class="sub">building the maze...</div>
+</div>
+
+<div id="canvas-container"></div>
+<div id="look-zone"></div>
+
+<div id="compass-wrap"><div id="compass-strip"></div><div id="compass-center-mark"></div></div>
+<div id="hud">
+  <div class="lvl" id="hud-level">LEVEL 1</div>
+  <div class="timer" id="hud-timer">00:00</div>
+</div>
+<button id="pause-btn">&#9776;</button>
+
+<div id="fly-pad" class="pad-group">
+  <div class="pad-label">LOOK UP/DN</div>
+  <button id="up-btn" class="pad-btn">&#9650;</button>
+  <button id="down-btn" class="pad-btn">&#9660;</button>
+</div>
+
+<div id="move-pad" class="pad-group">
+  <div class="pad-label">MOVE</div>
+  <div class="pad-grid">
+    <button id="forward-btn" class="pad-btn">&#9650;</button>
+    <button id="left-btn" class="pad-btn">&#9664;</button>
+    <button id="back-btn" class="pad-btn">&#9660;</button>
+    <button id="right-btn" class="pad-btn">&#9654;</button>
+  </div>
+</div>
+
+<div id="hint">Drag screen to look around &bull; Find the glowing exit</div>
+
+<!-- Level select -->
+<div class="overlay show" id="menu-overlay">
+  <div class="panel">
+    <h1>LABYRINTH 3D</h1>
+    <div class="tagline">Sealed on every side. Find your way out.</div>
+    <div class="level-grid" id="level-grid"></div>
+    <button class="ghost-btn" id="reset-progress-btn">Reset Progress</button>
+  </div>
+</div>
+
+<!-- Win overlay -->
+<div class="overlay" id="win-overlay">
+  <div class="panel">
+    <h1 id="win-title">ESCAPED!</h1>
+    <div class="tagline">You found the way out of the dark.</div>
+    <div class="stat-row"><span>Time</span><b id="win-time">00:00</b></div>
+    <div class="stat-row"><span>Level</span><b id="win-level">1</b></div>
+    <button class="big-btn" id="next-level-btn">Next Level &#9654;</button>
+    <button class="ghost-btn" id="win-menu-btn">Back to Levels</button>
+  </div>
+</div>
+
+<!-- Pause overlay -->
+<div class="overlay" id="pause-overlay">
+  <div class="panel">
+    <h1>PAUSED</h1>
+    <button class="big-btn" id="resume-btn">Resume</button>
+    <button class="ghost-btn" id="restart-level-btn">Restart Level</button>
+    <button class="ghost-btn" id="pause-menu-btn">Back to Levels</button>
+  </div>
+</div>
+
+<div id="ad-overlay">
+  <div id="ad-slot">
+    <!--
+      PASTE YOUR REAL AD CODE HERE once AdSense approves your site, e.g.:
+
+      <ins class="adsbygoogle"
+           style="display:block"
+           data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+           data-ad-slot="XXXXXXXXXX"
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+      <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+    -->
+    <div id="ad-label">Advertisement</div>
+    <button id="ad-close-btn">Continue &#9654;</button>
+  </div>
+</div>
+
+</div><!-- /#game-root -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="document.getElementById('loading').innerHTML='<div style=color:#fff;font-size:15px;padding:0 20px;text-align:center>Could not load the 3D library. Please check your internet connection and reload the page.</div>'"></script>
+<script>
+window.addEventListener('error', function (e) {
+  var el = document.getElementById('loading');
+  if (el && el.style.display !== 'none') {
+    el.innerHTML = '<div style="color:#fff;font-size:14px;padding:0 24px;text-align:center;line-height:1.5">An error occurred while loading the game:<br>' + (e.message || 'unknown error') + '</div>';
+    el.style.display = 'flex';
+  }
+});
+(function () {
+  "use strict";
+  if (typeof THREE === 'undefined') {
+    setTimeout(function () {
+      if (typeof THREE === 'undefined') {
+        document.getElementById('loading').innerHTML = '<div style="color:#fff;font-size:14px;padding:0 24px;text-align:center">Could not load the 3D library. Please check your internet connection and reload the page.</div>';
+      }
+    }, 4000);
+    return;
+  }
+
+  // ================= LEVEL DEFINITIONS =================
+  // size = maze grid size (cells), cellSize = world units per cell,
+  // wallH = wall/ceiling height, name/diff = display info.
+  var LEVELS = [
+    { size: 7,  cellSize: 4, wallH: 3.4, name: 'Level 1', diff: 'EASY',    zones: 2 },
+    { size: 9,  cellSize: 4, wallH: 3.4, name: 'Level 2', diff: 'EASY',    zones: 3 },
+    { size: 11, cellSize: 4, wallH: 3.4, name: 'Level 3', diff: 'MEDIUM',  zones: 5 },
+    { size: 13, cellSize: 4, wallH: 3.6, name: 'Level 4', diff: 'MEDIUM',  zones: 7 },
+    { size: 15, cellSize: 4, wallH: 3.6, name: 'Level 5', diff: 'MEDIUM',  zones: 8 },
+    { size: 17, cellSize: 4, wallH: 3.8, name: 'Level 6', diff: 'HARD',    zones: 8 },
+    { size: 19, cellSize: 4, wallH: 3.8, name: 'Level 7', diff: 'HARD',    zones: 8 },
+    { size: 21, cellSize: 4, wallH: 4.0, name: 'Level 8', diff: 'HARD',    zones: 8 },
+    { size: 25, cellSize: 4, wallH: 4.0, name: 'Level 9', diff: 'EXTREME', zones: 8 }
+  ];
+
+  var SAVE_KEY = 'labyrinth3d_progress_v1';
+  function loadProgress() {
+    try {
+      var raw = window.localStorage.getItem(SAVE_KEY);
+      if (!raw) return { cleared: 0 };
+      var p = JSON.parse(raw);
+      if (typeof p.cleared !== 'number') return { cleared: 0 };
+      return p;
+    } catch (e) { return { cleared: 0 }; }
+  }
+  function saveProgress(p) {
+    try { window.localStorage.setItem(SAVE_KEY, JSON.stringify(p)); } catch (e) {}
+  }
+  var progress = loadProgress();
+
+  // ================= MAZE GENERATION (recursive backtracker) =================
+  // Grid cells; each cell tracks which of its 4 walls (N,E,S,W) are open.
+  function generateMaze(size) {
+    var cells = [];
+    for (var y = 0; y < size; y++) {
+      var row = [];
+      for (var x = 0; x < size; x++) {
+        row.push({ N: true, E: true, S: true, W: true, visited: false });
+      }
+      cells.push(row);
+    }
+    var DIRS = [
+      { dx: 0, dy: -1, from: 'N', to: 'S' },
+      { dx: 1, dy: 0, from: 'E', to: 'W' },
+      { dx: 0, dy: 1, from: 'S', to: 'N' },
+      { dx: -1, dy: 0, from: 'W', to: 'E' }
+    ];
+    var stack = [{ x: 0, y: 0 }];
+    cells[0][0].visited = true;
+    while (stack.length) {
+      var cur = stack[stack.length - 1];
+      var options = [];
+      for (var i = 0; i < DIRS.length; i++) {
+        var d = DIRS[i];
+        var nx = cur.x + d.dx, ny = cur.y + d.dy;
+        if (nx >= 0 && nx < size && ny >= 0 && ny < size && !cells[ny][nx].visited) {
+          options.push({ nx: nx, ny: ny, d: d });
+        }
+      }
+      if (options.length === 0) {
+        stack.pop();
+        continue;
+      }
+      var pick = options[Math.floor(Math.random() * options.length)];
+      cells[cur.y][cur.x][pick.d.from] = false;
+      cells[pick.ny][pick.nx][pick.d.to] = false;
+      cells[pick.ny][pick.nx].visited = true;
+      stack.push({ x: pick.nx, y: pick.ny });
+    }
+    return cells;
+  }
+
+  // Pick the exit as the farthest cell from start via BFS (guarantees a real, long path).
+  // Also returns the full distance grid so callers can reuse it (e.g. for zone coloring).
+  function farthestCell(cells, size) {
+    var dist = [];
+    for (var y = 0; y < size; y++) { dist.push(new Array(size).fill(-1)); }
+    var q = [{ x: 0, y: 0 }];
+    dist[0][0] = 0;
+    var qi = 0;
+    var best = { x: 0, y: 0, d: 0 };
+    while (qi < q.length) {
+      var c = q[qi++];
+      var cell = cells[c.y][c.x];
+      var neighbors = [];
+      if (!cell.N) neighbors.push({ x: c.x, y: c.y - 1 });
+      if (!cell.S) neighbors.push({ x: c.x, y: c.y + 1 });
+      if (!cell.E) neighbors.push({ x: c.x + 1, y: c.y });
+      if (!cell.W) neighbors.push({ x: c.x - 1, y: c.y });
+      for (var i = 0; i < neighbors.length; i++) {
+        var n = neighbors[i];
+        if (dist[n.y][n.x] === -1) {
+          dist[n.y][n.x] = dist[c.y][c.x] + 1;
+          if (dist[n.y][n.x] > best.d) best = { x: n.x, y: n.y, d: dist[n.y][n.x] };
+          q.push(n);
+        }
+      }
+    }
+    best.dist = dist;
+    return best;
+  }
+
+  // Assigns each cell a zone index (0..zoneCount-1) based on its BFS distance
+  // from the start, split into equal distance bands. This gives the player a
+  // visual sense of "how far from start" they've traveled: the same color
+  // always means the same rough distance band, so re-entering a color they've
+  // already seen tells them they've circled back rather than progressed.
+  function assignZones(dist, size, zoneCount) {
+    var maxDist = 0;
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        if (dist[y][x] > maxDist) maxDist = dist[y][x];
+      }
+    }
+    var zones = [];
+    for (var y = 0; y < size; y++) {
+      var row = [];
+      for (var x = 0; x < size; x++) {
+        var d = dist[y][x];
+        var band = maxDist > 0 ? Math.floor((d / (maxDist + 0.0001)) * zoneCount) : 0;
+        if (band >= zoneCount) band = zoneCount - 1;
+        row.push(band);
+      }
+      zones.push(row);
+    }
+    return zones;
+  }
+
+  // Zone color palette (up to 8 distinct, easily-distinguishable hues).
+  var ZONE_COLORS = [
+    0x2b4f7a, // blue
+    0xb03a2e, // red
+    0xd4a017, // yellow
+    0x3f7d3f, // green
+    0x7a3f9c, // purple
+    0xd67b2e, // orange
+    0x2e8b8b, // teal
+    0xb85c8a  // pink
+  ];
+
+  // ================= GHOST WALL TEXTURES =================
+  // Five original, procedurally-drawn spooky-but-cartoon designs (nothing
+  // photographic or copyrighted - purely generated canvas shapes) rendered as
+  // transparent decal textures and scattered on random walls:
+  //   1. Jagged torn ghost - glowing narrow eyes, zigzag mouth
+  //   2. Floating skull - glowing eye sockets, jaw with teeth
+  //   3. Wraith - tall wispy smoke shape, single glowing eye slit
+  //   4. Pumpkin spirit - jack-o-lantern face, triangle eyes, jagged mouth
+  //   5. Chained specter - round-eyed ghost with a dangling chain below it
+  var GHOST_PALETTES = [
+    { body: 'rgba(60,90,150,0.92)',  edge: 'rgba(25,35,60,1)',  eye: 'rgba(255,210,60,1)' },
+    { body: 'rgba(95,55,120,0.92)',  edge: 'rgba(35,18,45,1)',  eye: 'rgba(255,70,50,1)' },
+    { body: 'rgba(35,110,110,0.92)', edge: 'rgba(12,40,40,1)',  eye: 'rgba(240,240,100,1)' },
+    { body: 'rgba(150,60,60,0.92)',  edge: 'rgba(50,15,15,1)',  eye: 'rgba(140,220,255,1)' }
+  ];
+
+  function newGhostCanvas() {
+    var size = 256;
+    var canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    return { canvas: canvas, ctx: ctx, size: size };
+  }
+  function toTexture(canvas) {
+    var tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }
+  function glowRadial(ctx, cx, cy, radius, colorRGBA) {
+    var glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, radius);
+    glow.addColorStop(0, colorRGBA.replace('1)', '0.20)'));
+    glow.addColorStop(1, colorRGBA.replace('1)', '0)'));
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // ---- Type 1: jagged torn ghost ----
+  function drawGhostTexture(palette, seed) {
+    var C = newGhostCanvas(); var ctx = C.ctx; var size = C.size;
+    var cx = size / 2, cy = size * 0.52;
+    var bodyW = size * 0.30, bodyH = size * 0.42;
+
+    glowRadial(ctx, cx, cy, bodyW * 1.8, palette.eye);
+
+    ctx.beginPath();
+    ctx.moveTo(cx - bodyW, cy - bodyH * 0.15);
+    for (var a = 180; a >= 0; a -= 12) {
+      var rad = a * Math.PI / 180;
+      ctx.lineTo(cx + bodyW * Math.cos(rad), cy - bodyH * 0.15 - bodyW * Math.sin(rad));
+    }
+    ctx.lineTo(cx + bodyW, cy + bodyH * 0.55);
+    var teeth = 7;
+    for (var i = 0; i <= teeth * 2; i++) {
+      var t = i / (teeth * 2);
+      var x = cx + bodyW - 2 * bodyW * t;
+      var depth = (i % 2 === 1) ? bodyH * 0.85 : bodyH * 0.5;
+      ctx.lineTo(x, cy + depth);
+    }
+    ctx.lineTo(cx - bodyW, cy + bodyH * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = palette.body;
+    ctx.fill();
+    ctx.strokeStyle = palette.edge;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.strokeStyle = palette.edge;
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = 2;
+    for (var s = 0; s < 6; s++) {
+      var sx = cx - bodyW * 0.7 + s * (bodyW * 1.4 / 5);
+      ctx.beginPath();
+      ctx.moveTo(sx, cy - bodyH * 0.3);
+      ctx.lineTo(sx + (seed % 5) - 2, cy + bodyH * 0.5);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    var eyeY = cy - bodyH * 0.05;
+    var eyeDX = bodyW * 0.34;
+    var eyeW = bodyW * 0.22, eyeH = bodyH * 0.10;
+    ctx.fillStyle = palette.eye;
+    ctx.shadowColor = palette.eye;
+    ctx.shadowBlur = 14;
+    [-1, 1].forEach(function (sign) {
+      var ex = cx + sign * eyeDX;
+      ctx.beginPath();
+      ctx.moveTo(ex - eyeW, eyeY + eyeH * 0.2);
+      ctx.lineTo(ex, eyeY - eyeH);
+      ctx.lineTo(ex + eyeW, eyeY - eyeH * 0.05);
+      ctx.lineTo(ex, eyeY + eyeH);
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+
+    var mouthY = cy + bodyH * 0.22;
+    var mw = bodyW * 0.55;
+    ctx.strokeStyle = '#141210';
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    var n = 8;
+    for (var j = 0; j <= n; j++) {
+      var tj = j / n;
+      var mx = cx - mw + 2 * mw * tj;
+      var my = mouthY + (j % 2 === 0 ? bodyH * 0.1 : -bodyH * 0.03);
+      if (j === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+
+    return toTexture(C.canvas);
+  }
+
+  // ---- Type 2: floating skull ----
+  function drawSkullTexture(palette) {
+    var C = newGhostCanvas(); var ctx = C.ctx; var size = C.size;
+    var cx = size / 2, cy = size * 0.5;
+    var r = size * 0.28;
+    glowRadial(ctx, cx, cy, r * 2.2, palette.eye);
+
+    ctx.fillStyle = palette.body;
+    ctx.strokeStyle = palette.edge;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - r * 0.2, r, r * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // jaw
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.55, cy + r * 0.35);
+    ctx.lineTo(cx - r * 0.35, cy + r * 0.95);
+    ctx.lineTo(cx + r * 0.35, cy + r * 0.95);
+    ctx.lineTo(cx + r * 0.55, cy + r * 0.35);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // teeth
+    ctx.fillStyle = 'rgba(240,235,225,1)';
+    for (var i = 0; i < 5; i++) {
+      var tx = cx - r * 0.4 + i * (r * 0.8 / 4);
+      ctx.fillRect(tx, cy + r * 0.55, r * 0.12, r * 0.25);
+      ctx.strokeRect(tx, cy + r * 0.55, r * 0.12, r * 0.25);
+    }
+
+    // glowing eye sockets
+    ctx.fillStyle = palette.eye;
+    ctx.shadowColor = palette.eye;
+    ctx.shadowBlur = 14;
+    [-1, 1].forEach(function (sign) {
+      var ex = cx + sign * r * 0.38;
+      ctx.beginPath();
+      ctx.ellipse(ex, cy + r * 0.1, r * 0.22, r * 0.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+
+    // crack line
+    ctx.strokeStyle = 'rgba(20,15,15,0.7)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.1, cy - r * 0.85);
+    ctx.lineTo(cx + r * 0.05, cy - r * 0.25);
+    ctx.lineTo(cx - r * 0.05, cy + r * 0.1);
+    ctx.stroke();
+
+    return toTexture(C.canvas);
+  }
+
+  // ---- Type 3: wraith (tall wispy smoke shape, single glowing eye slit) ----
+  function drawWraithTexture(palette) {
+    var C = newGhostCanvas(); var ctx = C.ctx; var size = C.size;
+    var cx = size / 2, cy = size * 0.55;
+    var bw = size * 0.22, bh = size * 0.48;
+    glowRadial(ctx, cx, cy, size * 0.5, palette.eye);
+
+    ctx.beginPath();
+    ctx.moveTo(cx - bw * 0.8, cy - bh * 0.5);
+    for (var a = 180; a >= 0; a -= 10) {
+      var rad = a * Math.PI / 180;
+      ctx.lineTo(cx + bw * 0.8 * Math.cos(rad), cy - bh * 0.5 - bw * Math.sin(rad));
+    }
+    var wispN = 6;
+    for (var i = 0; i <= wispN; i++) {
+      var t = i / wispN;
+      var x = cx + bw * 0.8 - (2 * bw * 0.8) * t;
+      var y = cy + bh * 0.5 + (i % 2 === 0 ? bh * 0.35 : bh * 0.15);
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = palette.body;
+    ctx.strokeStyle = palette.edge;
+    ctx.lineWidth = 2;
+    ctx.fill(); ctx.stroke();
+
+    // single glowing eye slit
+    var ew = bw * 0.5, eh = bh * 0.05;
+    ctx.fillStyle = palette.eye;
+    ctx.shadowColor = palette.eye;
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - bh * 0.15, ew, eh, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    return toTexture(C.canvas);
+  }
+
+  // ---- Type 4: pumpkin spirit (jack-o-lantern) ----
+  function drawPumpkinTexture(palette) {
+    var C = newGhostCanvas(); var ctx = C.ctx; var size = C.size;
+    var cx = size / 2, cy = size * 0.5;
+    var r = size * 0.26;
+    glowRadial(ctx, cx, cy, r * 2.4, palette.eye);
+
+    ctx.fillStyle = palette.body;
+    ctx.strokeStyle = palette.edge;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 1.15, r, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // ridge lines
+    ctx.strokeStyle = 'rgba(30,15,10,0.4)';
+    ctx.lineWidth = 2;
+    for (var i = -2; i <= 2; i++) {
+      var x = cx + i * r * 0.42;
+      ctx.beginPath();
+      ctx.ellipse(x, cy, r * 0.25, r, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // stem
+    ctx.fillStyle = 'rgba(70,90,40,1)';
+    ctx.fillRect(cx - r * 0.12, cy - r * 1.3, r * 0.24, r * 0.4);
+
+    // glowing triangle eyes + jagged mouth
+    ctx.fillStyle = palette.eye;
+    ctx.shadowColor = palette.eye;
+    ctx.shadowBlur = 16;
+    [-1, 1].forEach(function (sign) {
+      var ex = cx + sign * r * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(ex - r * 0.22, cy + r * 0.15);
+      ctx.lineTo(ex, cy - r * 0.25);
+      ctx.lineTo(ex + r * 0.22, cy + r * 0.15);
+      ctx.closePath();
+      ctx.fill();
+    });
+    var mw = r * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(cx - mw, cy + r * 0.55);
+    for (var j = 0; j < 7; j++) {
+      var t = j / 6;
+      var x2 = cx - mw + 2 * mw * t;
+      var y2 = cy + r * 0.35 + (j % 2 === 0 ? r * 0.18 : 0);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.lineTo(cx + mw, cy + r * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    return toTexture(C.canvas);
+  }
+
+  // ---- Type 5: chained specter ----
+  function drawChainedTexture(palette) {
+    var C = newGhostCanvas(); var ctx = C.ctx; var size = C.size;
+    var cx = size / 2, cy = size * 0.48;
+    var bw = size * 0.27, bh = size * 0.36;
+    glowRadial(ctx, cx, cy, bw * 2, palette.eye);
+
+    ctx.beginPath();
+    ctx.moveTo(cx - bw, cy - bh * 0.2);
+    for (var a = 180; a >= 0; a -= 10) {
+      var rad = a * Math.PI / 180;
+      ctx.lineTo(cx + bw * Math.cos(rad), cy - bh * 0.2 - bw * Math.sin(rad));
+    }
+    ctx.lineTo(cx + bw, cy + bh * 0.6);
+    var teeth = 5;
+    for (var i = 0; i <= teeth * 2; i++) {
+      var t = i / (teeth * 2);
+      var x = cx + bw - 2 * bw * t;
+      var y = cy + bh * 0.6 + (i % 2 === 1 ? bh * 0.2 : 0);
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = palette.body;
+    ctx.strokeStyle = palette.edge;
+    ctx.lineWidth = 2;
+    ctx.fill(); ctx.stroke();
+
+    // round hollow-ish eyes (softer, different from Type 1's narrow eyes)
+    ctx.fillStyle = palette.eye;
+    ctx.shadowColor = palette.eye;
+    ctx.shadowBlur = 10;
+    [-1, 1].forEach(function (sign) {
+      var ex = cx + sign * bw * 0.35;
+      ctx.beginPath();
+      ctx.ellipse(ex, cy + bh * 0.1, bw * 0.14, bh * 0.14, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+
+    // dangling chain + orb below
+    ctx.strokeStyle = 'rgba(90,90,100,1)';
+    ctx.lineWidth = 3;
+    var chainY = cy + bh * 0.8;
+    for (var c = 0; c < 3; c++) {
+      var yy = chainY + c * 14;
+      ctx.beginPath();
+      ctx.ellipse(cx, yy, 8, 6, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(70,70,80,1)';
+    ctx.strokeStyle = 'rgba(30,30,35,1)';
+    ctx.beginPath();
+    ctx.ellipse(cx, chainY + 3 * 14 + 14, 14, 14, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    return toTexture(C.canvas);
+  }
+
+  var ghostTextures = [];
+  function buildGhostTextures() {
+    var list = [];
+    GHOST_PALETTES.forEach(function (p, i) {
+      list.push(drawGhostTexture(p, i * 7 + 3));
+      list.push(drawSkullTexture(p));
+      list.push(drawWraithTexture(p));
+      list.push(drawPumpkinTexture(p));
+      list.push(drawChainedTexture(p));
+    });
+    ghostTextures = list;
+  }
+
+  // ================= GAME STATE =================
+  var currentLevelIdx = 0;
+  var scene, camera, renderer;
+  var wallMeshes = []; // { minX, maxX, minZ, maxZ } world-space AABBs for collision
+  var cellSize = 4, wallH = 3.4, mazeSize = 7;
+  var exitWorldPos = null;
+  var exitLight = null, exitMesh = null;
+  var startTime = 0, elapsedAtPause = 0, timerRunning = false;
+  var gameActive = false;
+
+  function initThree() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x05060a);
+    scene.fog = new THREE.Fog(0x05060a, 6, 34);
+
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    function resize() {
+      var root = document.getElementById('game-root');
+      var w = root.clientWidth, h = root.clientHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', function () { setTimeout(resize, 200); });
+    resize();
+
+    var hemi = new THREE.HemisphereLight(0x554433, 0x0a0a12, 0.55);
+    scene.add(hemi);
+    var playerLight = new THREE.PointLight(0xffcf8a, 1.1, 14, 2);
+    camera.add(playerLight);
+    scene.add(camera);
+  }
+
+  var wallMat = null, floorMat = null, ceilMat = null, exitMat = null, zoneMats = [];
+
+  // Procedural cracked stone-brick wall texture: offset brick rows, mortar
+  // cracks, damp/mossy blotches, and warm torch-glow flecks in the corners -
+  // matching the reference photo's look but fully generated (no copyrighted
+  // image used). tintColor lets each zone keep its own distinguishable hue
+  // while sharing the same brick/crack/blotch detail.
+  function drawStoneWallTexture(tintHex) {
+    var size = 512;
+    var canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext('2d');
+
+    var tr = (tintHex >> 16) & 255, tg = (tintHex >> 8) & 255, tb = tintHex & 255;
+    // base fill uses a darkened version of the tint so different zones stay
+    // readable while all sharing the same stone texture treatment
+    var baseR = Math.round(tr * 0.55 + 20), baseG = Math.round(tg * 0.55 + 20), baseB = Math.round(tb * 0.55 + 20);
+    ctx.fillStyle = 'rgb(' + baseR + ',' + baseG + ',' + baseB + ')';
+    ctx.fillRect(0, 0, size, size);
+
+    // brick grid, offset alternating rows
+    var brickW = 64, brickH = 28;
+    var rows = Math.ceil(size / brickH) + 2;
+    for (var row = 0; row < rows; row++) {
+      var y = row * brickH;
+      var offset = (row % 2) ? brickW / 2 : 0;
+      var x = -offset;
+      while (x < size) {
+        var bw = brickW + (Math.random() * 12 - 6);
+        var bh = brickH + (Math.random() * 6 - 3);
+        var jitter = Math.random() * 24 - 12;
+        var r = Math.min(255, Math.max(0, baseR + 14 + jitter));
+        var g = Math.min(255, Math.max(0, baseG + 16 + jitter));
+        var b = Math.min(255, Math.max(0, baseB + 18 + jitter));
+        ctx.fillStyle = 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+        ctx.fillRect(x, y, bw - 3, bh - 3);
+        ctx.strokeStyle = 'rgba(10,12,14,0.6)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, bw - 3, bh - 3);
+        x += brickW;
+      }
+    }
+
+    // mortar cracks: random jagged lines
+    ctx.strokeStyle = 'rgba(8,10,12,0.75)';
+    for (var c = 0; c < 14; c++) {
+      var cx0 = Math.random() * size, cy0 = Math.random() * size;
+      ctx.lineWidth = Math.random() < 0.3 ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(cx0, cy0);
+      var segs = 4 + Math.floor(Math.random() * 4);
+      for (var s = 0; s < segs; s++) {
+        cx0 += Math.random() * 60 - 30;
+        cy0 += Math.random() * 60 - 30;
+        ctx.lineTo(cx0, cy0);
+      }
+      ctx.stroke();
+    }
+
+    // damp/mossy blotches
+    for (var m = 0; m < 10; m++) {
+      var mx = Math.random() * size, my = Math.random() * size;
+      var mr = 20 + Math.random() * 40;
+      var grad = ctx.createRadialGradient(mx, my, 0, mx, my, mr);
+      grad.addColorStop(0, 'rgba(10,30,25,0.35)');
+      grad.addColorStop(1, 'rgba(10,30,25,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // warm torch-glow flecks near edges
+    for (var gI = 0; gI < 4; gI++) {
+      var gx = Math.random() < 0.5 ? Math.random() * 30 : size - Math.random() * 30;
+      var gy = size * (0.2 + Math.random() * 0.6);
+      var gr2 = 25 + Math.random() * 30;
+      var grad2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr2);
+      grad2.addColorStop(0, 'rgba(230,140,60,0.35)');
+      grad2.addColorStop(1, 'rgba(230,140,60,0)');
+      ctx.fillStyle = grad2;
+      ctx.beginPath(); ctx.arc(gx, gy, gr2, 0, Math.PI * 2); ctx.fill();
+    }
+
+    var tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  function buildMaterials() {
+    var baseTex = drawStoneWallTexture(0x2b4f7a);
+    wallMat = new THREE.MeshStandardMaterial({ map: baseTex, roughness: 0.95, metalness: 0.02 });
+    floorMat = new THREE.MeshStandardMaterial({ color: 0x2a2118, roughness: 1.0 });
+    ceilMat = new THREE.MeshStandardMaterial({ color: 0x161210, roughness: 1.0, side: THREE.DoubleSide });
+    exitMat = new THREE.MeshStandardMaterial({ color: 0x4bd67a, emissive: 0x2fae5a, emissiveIntensity: 1.4, roughness: 0.4 });
+    zoneMats = ZONE_COLORS.map(function (c) {
+      var tex = drawStoneWallTexture(c);
+      return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0.02 });
+    });
+  }
+
+  function clearMazeMeshes() {
+    for (var i = scene.children.length - 1; i >= 0; i--) {
+      var c = scene.children[i];
+      if (c.userData && c.userData.mazePart) scene.remove(c);
+    }
+    wallMeshes = [];
+    exitLight = null;
+    exitMesh = null;
+  }
+
+  function buildMazeScene(levelDef) {
+    clearMazeMeshes();
+    mazeSize = levelDef.size;
+    cellSize = levelDef.cellSize;
+    wallH = levelDef.wallH;
+
+    var cells = generateMaze(mazeSize);
+    var exitCell = farthestCell(cells, mazeSize);
+    var zoneCount = levelDef.zones || 1;
+    var zones = assignZones(exitCell.dist, mazeSize, zoneCount);
+
+    var totalDim = mazeSize * cellSize;
+
+    // Floor
+    var floorGeo = new THREE.PlaneGeometry(totalDim, totalDim);
+    var floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(totalDim / 2, 0, totalDim / 2);
+    floor.userData.mazePart = true;
+    scene.add(floor);
+
+    // Ceiling (seals the maze from above so nobody can see an overview)
+    var ceilGeo = new THREE.PlaneGeometry(totalDim, totalDim);
+    var ceil = new THREE.Mesh(ceilGeo, ceilMat);
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.set(totalDim / 2, wallH, totalDim / 2);
+    ceil.userData.mazePart = true;
+    scene.add(ceil);
+
+    // Wall geometry reused for instancing-ish placement (simple meshes; fine at these sizes)
+    var wallGeoH = new THREE.BoxGeometry(cellSize, wallH, 0.3); // horizontal-running wall (blocks N/S movement)
+    var wallGeoV = new THREE.BoxGeometry(0.3, wallH, cellSize); // vertical-running wall (blocks E/W movement)
+
+    function matForZone(z) {
+      if (zoneCount <= 1 || !zoneMats.length) return wallMat;
+      return zoneMats[z % zoneMats.length];
+    }
+
+    var GHOST_CHANCE = 0.80; // most walls carry a ghost decal now
+    var ghostDecalGeo = new THREE.PlaneGeometry(cellSize * 0.6, wallH * 0.7);
+    function maybeAddGhostDecal(cx, cz, horizontal) {
+      if (!ghostTextures.length) return;
+      if (Math.random() > GHOST_CHANCE) return;
+      var tex = ghostTextures[Math.floor(Math.random() * ghostTextures.length)];
+      var mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+      var plane = new THREE.Mesh(ghostDecalGeo, mat);
+      // Offset slightly off the wall face so it doesn't z-fight, on a random side.
+      var offset = 0.17;
+      if (horizontal) {
+        plane.position.set(cx, wallH * 0.42, cz + (Math.random() < 0.5 ? offset : -offset));
+      } else {
+        plane.position.set(cx + (Math.random() < 0.5 ? offset : -offset), wallH * 0.42, cz);
+        plane.rotation.y = Math.PI / 2;
+      }
+      plane.userData.mazePart = true;
+      scene.add(plane);
+    }
+
+    function addWall(cx, cz, horizontal, zone) {
+      var geo = horizontal ? wallGeoH : wallGeoV;
+      var m = new THREE.Mesh(geo, matForZone(zone));
+      m.position.set(cx, wallH / 2, cz);
+      m.userData.mazePart = true;
+      scene.add(m);
+      var hw = horizontal ? cellSize / 2 : 0.15;
+      var hd = horizontal ? 0.15 : cellSize / 2;
+      wallMeshes.push({ minX: cx - hw, maxX: cx + hw, minZ: cz - hd, maxZ: cz + hd });
+      maybeAddGhostDecal(cx, cz, horizontal);
+    }
+
+    // Build walls: for each cell, place N wall and W wall (avoids duplicates);
+    // plus outer S/E boundary on the far edges. Each wall is colored by the
+    // zone of the cell it belongs to (the deeper/farther cell wins on shared
+    // walls, so a zone's boundary reads as "the wall between here and the
+    // next band out").
+    for (var y = 0; y < mazeSize; y++) {
+      for (var x = 0; x < mazeSize; x++) {
+        var cell = cells[y][x];
+        var wx = x * cellSize, wz = y * cellSize;
+        var myZone = zones[y][x];
+        if (cell.N) {
+          var nZone = y > 0 ? zones[y - 1][x] : myZone;
+          addWall(wx + cellSize / 2, wz, true, Math.max(myZone, nZone));
+        }
+        if (cell.W) {
+          var wZone = x > 0 ? zones[y][x - 1] : myZone;
+          addWall(wx, wz + cellSize / 2, false, Math.max(myZone, wZone));
+        }
+        if (y === mazeSize - 1 && cell.S) addWall(wx + cellSize / 2, wz + cellSize, true, myZone);
+        if (x === mazeSize - 1 && cell.E) addWall(wx + cellSize, wz + cellSize / 2, false, myZone);
+      }
+    }
+
+    // Exit marker: glowing pillar + light at farthest cell's center
+    var ex = exitCell.x * cellSize + cellSize / 2;
+    var ez = exitCell.y * cellSize + cellSize / 2;
+    exitWorldPos = new THREE.Vector3(ex, 1, ez);
+
+    var exitGeo = new THREE.CylinderGeometry(0.35, 0.5, wallH * 0.9, 12);
+    exitMesh = new THREE.Mesh(exitGeo, exitMat);
+    exitMesh.position.set(ex, wallH * 0.45, ez);
+    exitMesh.userData.mazePart = true;
+    scene.add(exitMesh);
+
+    exitLight = new THREE.PointLight(0x4bd67a, 2.2, cellSize * 3.2, 2);
+    exitLight.position.set(ex, wallH * 0.6, ez);
+    exitLight.userData.mazePart = true;
+    scene.add(exitLight);
+
+    // Ambient torch-like point lights scattered through maze so it isn't pitch black,
+    // but sparse enough to preserve the lost-in-the-dark feeling.
+    var torchCount = Math.max(4, Math.floor(mazeSize * mazeSize / 14));
+    for (var i = 0; i < torchCount; i++) {
+      var tx = Math.floor(Math.random() * mazeSize);
+      var ty = Math.floor(Math.random() * mazeSize);
+      var wx2 = tx * cellSize + cellSize / 2;
+      var wz2 = ty * cellSize + cellSize / 2;
+      var torchLight = new THREE.PointLight(0xffb15c, 0.55, cellSize * 2.6, 2);
+      torchLight.position.set(wx2, wallH * 0.7, wz2);
+      torchLight.userData.mazePart = true;
+      scene.add(torchLight);
+    }
+
+    // Player start position: center of cell (0,0), facing into the maze
+    camera.position.set(cellSize / 2, 1.6, cellSize / 2);
+    yaw = Math.PI; pitch = 0;
+  }
+
+  function loadLevel(idx) {
+    currentLevelIdx = idx;
+    var def = LEVELS[idx];
+    document.getElementById('hud-level').textContent = def.name.toUpperCase();
+    buildMazeScene(def);
+    startTime = performance.now();
+    elapsedAtPause = 0;
+    timerRunning = true;
+    gameActive = true;
+    hideAllOverlays();
+    maybeShowAd();
+  }
+
+  // ================= COLLISION =================
+  var PLAYER_RADIUS = 0.32;
+  function resolveCollision(pos) {
+    // Simple AABB push-out against each wall segment (expanded by player radius).
+    for (var i = 0; i < wallMeshes.length; i++) {
+      var b = wallMeshes[i];
+      var minX = b.minX - PLAYER_RADIUS, maxX = b.maxX + PLAYER_RADIUS;
+      var minZ = b.minZ - PLAYER_RADIUS, maxZ = b.maxZ + PLAYER_RADIUS;
+      if (pos.x > minX && pos.x < maxX && pos.z > minZ && pos.z < maxZ) {
+        var overlapLeft = pos.x - minX;
+        var overlapRight = maxX - pos.x;
+        var overlapTop = pos.z - minZ;
+        var overlapBottom = maxZ - pos.z;
+        var minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+        if (minOverlap === overlapLeft) pos.x = minX;
+        else if (minOverlap === overlapRight) pos.x = maxX;
+        else if (minOverlap === overlapTop) pos.z = minZ;
+        else pos.z = maxZ;
+      }
+    }
+    // Keep player within overall maze bounds too
+    var totalDim = mazeSize * cellSize;
+    if (pos.x < 0.3) pos.x = 0.3;
+    if (pos.x > totalDim - 0.3) pos.x = totalDim - 0.3;
+    if (pos.z < 0.3) pos.z = 0.3;
+    if (pos.z > totalDim - 0.3) pos.z = totalDim - 0.3;
+  }
+
+  // ================= LOOK CONTROLS (BlockCraft-style drag) =================
+  var yaw = 0, pitch = 0;
+  var lookPointerId = null, lastLookX = 0, lastLookY = 0;
+  var LOOK_SENSITIVITY = 0.0035;
+  var lookZone = document.getElementById('look-zone');
+
+  var portraitMQ = window.matchMedia('(orientation: portrait)');
+  var rotateHackActive = portraitMQ.matches;
+  function syncRotateHackState() { rotateHackActive = portraitMQ.matches; }
+  if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', syncRotateHackState);
+  else if (portraitMQ.addListener) portraitMQ.addListener(syncRotateHackState);
+
+  lookZone.addEventListener('pointerdown', function (e) {
+    if (!gameActive) return;
+    if (lookPointerId !== null) return;
+    lookPointerId = e.pointerId;
+    lastLookX = e.clientX;
+    lastLookY = e.clientY;
+  });
+  window.addEventListener('pointermove', function (e) {
+    if (e.pointerId !== lookPointerId) return;
+    var dx = e.clientX - lastLookX;
+    var dy = e.clientY - lastLookY;
+    lastLookX = e.clientX;
+    lastLookY = e.clientY;
+    if (rotateHackActive) {
+      yaw -= dy * LOOK_SENSITIVITY;
+      pitch += dx * LOOK_SENSITIVITY;
+    } else {
+      yaw -= dx * LOOK_SENSITIVITY;
+      pitch -= dy * LOOK_SENSITIVITY;
+    }
+    var limit = Math.PI / 2 - 0.02;
+    if (pitch > limit) pitch = limit;
+    if (pitch < -limit) pitch = -limit;
+  });
+  function clearLookPointer(e) {
+    if (e.pointerId === lookPointerId) lookPointerId = null;
+  }
+  window.addEventListener('pointerup', clearLookPointer);
+  window.addEventListener('pointercancel', clearLookPointer);
+
+  // ---------- Hold buttons ----------
+  function bindHold(el, onDown, onUp) {
+    el.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      el.classList.add('pressed');
+      onDown();
+    });
+    var release = function () { el.classList.remove('pressed'); onUp(); };
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('pointerleave', release);
+  }
+  var upPressed = false, downPressed = false;
+  bindHold(document.getElementById('up-btn'), function () { upPressed = true; }, function () { upPressed = false; });
+  bindHold(document.getElementById('down-btn'), function () { downPressed = true; }, function () { downPressed = false; });
+
+  var forwardPressed = false, backwardPressed = false, leftPressed = false, rightPressed = false;
+  bindHold(document.getElementById('forward-btn'), function () { forwardPressed = true; }, function () { forwardPressed = false; });
+  bindHold(document.getElementById('back-btn'), function () { backwardPressed = true; }, function () { backwardPressed = false; });
+  bindHold(document.getElementById('left-btn'), function () { leftPressed = true; }, function () { leftPressed = false; });
+  bindHold(document.getElementById('right-btn'), function () { rightPressed = true; }, function () { rightPressed = false; });
+
+  // "Look up/down" pad on the right actually tilts pitch (kept as up/down buttons
+  // per the reference control scheme, repurposed here since flying isn't allowed
+  // in a maze - they nudge pitch instead so players still have a button-based
+  // vertical look option alongside drag-to-look).
+  var lookUpPressed = false, lookDownPressed = false;
+  // Re-bind up/down to pitch nudge instead of flight (overwrite previous handlers' effect in animate loop)
+
+  // ================= COMPASS =================
+  var DIR_LABELS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  function buildCompassStrip() {
+    var strip = document.getElementById('compass-strip');
+    strip.innerHTML = '';
+    // Repeat labels enough times to allow scrolling in both directions smoothly
+    var repeats = 6;
+    var seq = [];
+    for (var r = 0; r < repeats; r++) {
+      for (var i = 0; i < DIR_LABELS.length; i++) seq.push(DIR_LABELS[i]);
+    }
+    for (var i = 0; i < seq.length; i++) {
+      var span = document.createElement('span');
+      span.textContent = seq[i];
+      if (seq[i].length === 1) span.classList.add('major');
+      strip.appendChild(span);
+    }
+  }
+  buildCompassStrip();
+  function updateCompass() {
+    // yaw=0 faces -Z (north). Map yaw to degrees, 45deg per label slot.
+    var deg = (-yaw * 180 / Math.PI) % 360;
+    if (deg < 0) deg += 360;
+    var slot = deg / 45; // 0..8 fractional
+    var pxPerSlot = 45;
+    var totalSlots = DIR_LABELS.length * 6;
+    var centerSlot = totalSlots / 2 + slot;
+    var offsetPx = centerSlot * pxPerSlot;
+    document.getElementById('compass-strip').style.transform = 'translateX(' + (-offsetPx) + 'px)';
+  }
+
+  // ================= TIMER / HUD =================
+  function formatTime(ms) {
+    var totalSec = Math.floor(ms / 1000);
+    var m = Math.floor(totalSec / 60);
+    var s = totalSec % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function updateTimerHud() {
+    if (!timerRunning) return;
+    var elapsed = elapsedAtPause + (performance.now() - startTime);
+    document.getElementById('hud-timer').textContent = formatTime(elapsed);
+  }
+
+  // ================= WIN / OVERLAYS =================
+  function hideAllOverlays() {
+    document.getElementById('menu-overlay').classList.remove('show');
+    document.getElementById('win-overlay').classList.remove('show');
+    document.getElementById('pause-overlay').classList.remove('show');
+  }
+  function checkWin() {
+    if (!gameActive || !exitWorldPos) return;
+    var dx = camera.position.x - exitWorldPos.x;
+    var dz = camera.position.z - exitWorldPos.z;
+    var distSq = dx * dx + dz * dz;
+    if (distSq < 1.1 * 1.1) {
+      onWin();
+    }
+  }
+  function onWin() {
+    gameActive = false;
+    timerRunning = false;
+    var elapsed = elapsedAtPause + (performance.now() - startTime);
+    if (currentLevelIdx + 1 > progress.cleared) {
+      progress.cleared = currentLevelIdx + 1;
+      saveProgress(progress);
+    }
+    document.getElementById('win-time').textContent = formatTime(elapsed);
+    document.getElementById('win-level').textContent = LEVELS[currentLevelIdx].name;
+    var hasNext = currentLevelIdx + 1 < LEVELS.length;
+    document.getElementById('next-level-btn').style.display = hasNext ? 'block' : 'none';
+    document.getElementById('win-overlay').classList.add('show');
+    maybeShowAd();
+  }
+
+  // ================= AD OVERLAY (interstitial: level start / win / restart) =================
+  // Shows on every level start, every win, and every restart - but with a
+  // cooldown so two triggers firing back-to-back (e.g. restart right after a
+  // fresh start) don't show two ads in a row.
+  var adOverlay = document.getElementById('ad-overlay');
+  var AD_COOLDOWN_MS = 20000; // 20s minimum gap between ads
+  var lastAdShownAt = -Infinity;
+  function maybeShowAd() {
+    var now = performance.now();
+    if (now - lastAdShownAt < AD_COOLDOWN_MS) return;
+    lastAdShownAt = now;
+    adOverlay.classList.add('show');
+  }
+  document.getElementById('ad-close-btn').addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    adOverlay.classList.remove('show');
+  });
+
+  // ================= LEVEL SELECT UI =================
+  function renderLevelGrid() {
+    var grid = document.getElementById('level-grid');
+    grid.innerHTML = '';
+    for (var i = 0; i < LEVELS.length; i++) {
+      var def = LEVELS[i];
+      var btn = document.createElement('button');
+      var locked = i > progress.cleared;
+      var cleared = i < progress.cleared;
+      btn.className = 'level-btn' + (locked ? ' locked' : '') + (cleared ? ' cleared' : '');
+      btn.innerHTML = (i + 1) + '<div class="diff">' + def.diff + '</div>';
+      (function (idx, isLocked) {
+        btn.addEventListener('pointerdown', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          if (isLocked) return;
+          loadLevel(idx);
+        });
+      })(i, locked);
+      grid.appendChild(btn);
+    }
+  }
+
+  document.getElementById('reset-progress-btn').addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    progress = { cleared: 0 };
+    saveProgress(progress);
+    renderLevelGrid();
+  });
+
+  document.getElementById('next-level-btn').addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    var next = currentLevelIdx + 1;
+    if (next < LEVELS.length) loadLevel(next);
+  });
+  document.getElementById('win-menu-btn').addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    gameActive = false;
+    hideAllOverlays();
+    renderLevelGrid();
+    document.getElementById('menu-overlay').classList.add('show');
+  });
+
+  // ---------- Pause ----------
+  document.getElementById('pause-btn').addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    if (!gameActive) return;
+    gameActive = false;
+    if (timerRunning) {
+      elapsedAtPause += performance.now() - startTime;
+      timerRunning = false;
+    }
+    document.getElementById('pause-overlay').classList.add('show');
+  });
+  document.getElementById('resume-btn').addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    hideAllOverlays();
+    startTime = performance.now();
+    timerRunning = true;
+    gameActive = true;
+  });
+  document.getElementById('restart-level-btn').addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    loadLevel(currentLevelIdx);
+  });
+  document.getElementById('pause-menu-btn').addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    gameActive = false;
+    hideAllOverlays();
+    renderLevelGrid();
+    document.getElementById('menu-overlay').classList.add('show');
+  });
+
+  // ================= MAIN LOOP =================
+  var MOVE_SPEED = 5.2;
+  var clock;
+  var _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  var _moveEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+  var _fwdDir = new THREE.Vector3();
+  var _rightDir = new THREE.Vector3();
+  var _moveDir = new THREE.Vector3();
+  var LOOK_TILT_SPEED = 1.4;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    var dt = Math.min(clock.getDelta(), 0.08);
+
+    if (gameActive) {
+      // up/down buttons nudge pitch (look tilt) since flying is disabled in the maze
+      if (upPressed) pitch += LOOK_TILT_SPEED * dt;
+      if (downPressed) pitch -= LOOK_TILT_SPEED * dt;
+      var limit = Math.PI / 2 - 0.02;
+      if (pitch > limit) pitch = limit;
+      if (pitch < -limit) pitch = -limit;
+
+      _euler.set(pitch, yaw, 0, 'YXZ');
+      camera.quaternion.setFromEuler(_euler);
+
+      if (forwardPressed || backwardPressed || leftPressed || rightPressed) {
+        _moveEuler.set(0, yaw, 0, 'YXZ');
+        _fwdDir.set(0, 0, -1).applyEuler(_moveEuler);
+        _rightDir.set(1, 0, 0).applyEuler(_moveEuler);
+        _moveDir.set(0, 0, 0);
+        if (forwardPressed) _moveDir.add(_fwdDir);
+        if (backwardPressed) _moveDir.sub(_fwdDir);
+        if (rightPressed) _moveDir.add(_rightDir);
+        if (leftPressed) _moveDir.sub(_rightDir);
+        if (_moveDir.lengthSq() > 0) {
+          _moveDir.normalize();
+          camera.position.x += _moveDir.x * MOVE_SPEED * dt;
+          camera.position.z += _moveDir.z * MOVE_SPEED * dt;
+          resolveCollision(camera.position);
+        }
+      }
+
+      // subtle exit pulse
+      if (exitMesh) {
+        var pulse = 1.2 + Math.sin(performance.now() * 0.004) * 0.35;
+        exitMesh.material.emissiveIntensity = pulse;
+      }
+
+      updateCompass();
+      updateTimerHud();
+      checkWin();
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  // ================= INIT =================
+  function start() {
+    initThree();
+    buildMaterials();
+    buildGhostTextures();
+    clock = new THREE.Clock();
+    renderLevelGrid();
+    document.getElementById('loading').style.display = 'none';
+    animate();
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>

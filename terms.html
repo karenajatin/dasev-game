@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terms &amp; Conditions — Fun Zone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div class="grain"></div>
+
+<div class="page-wrap">
+  <a href="index.html" class="page-back">← Back to FUN ZONE</a>
+  <p class="page-eyebrow">TERMS &amp; CONDITIONS</p>
+  <h1 class="page-title">Terms &amp; Conditions</h1>
+  <div class="page-body">
+    <p>Last updated: <span id="update-date"></span></p>
+    <p>By using Fun Zone, you agree to the terms and conditions below.</p>
+
+    <h2>Use of the site</h2>
+    <p>All games and activities on this site are intended for entertainment and educational purposes only. You must use the site lawfully and in a way that does not harm other users.</p>
+
+    <h2>Intellectual property</h2>
+    <p>The design, game mechanics, code, and content on this site belong to Fun Zone unless stated otherwise. Copying or redistributing content without our written permission is not allowed.</p>
+
+    <h2>Limitation of liability</h2>
+    <p>The site is provided "as is". We do not guarantee uninterrupted, error-free operation and are not liable for any damages arising from use of the site.</p>
+
+    <h2>Advertising</h2>
+    <p>This site may display advertising through services such as Google AdSense. We are not responsible for the content of third-party ads.</p>
+
+    <h2>Changes</h2>
+    <p>We reserve the right to change these terms at any time. Continued use of the site after changes are posted constitutes acceptance of the new terms.</p>
+
+    <h2>Contact</h2>
+    <p>If you have any questions about these terms, please reach out via the <a href="contact.html">Contact Us</a> page.</p>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <nav class="footer-links">
+    <a href="about.html">About Us</a>
+    <a href="privacy.html">Privacy Policy</a>
+    <a href="terms.html">Terms &amp; Conditions</a>
+    <a href="contact.html">Contact Us</a>
+  </nav>
+  <p class="footer-copy">© <span id="year"></span> Fun Zone. All rights reserved.</p>
+</footer>
+
+<script src="script.js"></script>
+<script>
+  document.getElementById('update-date').textContent = new Date().toLocaleDateString('en-GB', { year:'numeric', month:'long', day:'numeric' });
+</script>
+</body>
+</html>
