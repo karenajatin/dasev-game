@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dasev Games</title>
+<meta name="description" content="Dasev Games — a home for puzzles, games and fun activities.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="bg-shape" style="width:180px;height:180px;top:8%;left:4%;background:var(--yellow);animation-delay:0s;"></div>
+<div class="bg-shape" style="width:130px;height:130px;top:60%;left:2%;background:var(--blue);animation-delay:1.5s;"></div>
+<div class="bg-shape" style="width:150px;height:150px;top:12%;right:5%;background:var(--pink);animation-delay:.7s;"></div>
+<div class="bg-shape" style="width:110px;height:110px;top:70%;right:6%;background:var(--green);animation-delay:2.2s;"></div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <p class="eyebrow">Made by Karena Jatin</p>
+    <h1 class="title" data-text="DASEV GAMES">DASEV GAMES</h1>
+    <span class="title-bar" aria-hidden="true"></span>
+  </div>
+</header>
+
+<section class="ad-section" aria-label="Advertisement">
+  <div class="ad-slot" id="ad-slot">
+    <span class="ad-corner tl"></span>
+    <span class="ad-corner tr"></span>
+    <span class="ad-corner bl"></span>
+    <span class="ad-corner br"></span>
+    <div class="ad-slideshow" id="ad-slideshow">
+      <img src="ad1.png" class="ad-slide active" alt="HI HOW ARE YOU">
+      <img src="ad2.png" class="ad-slide" alt="ARE YOU FINE?">
+      <img src="ad3.png" class="ad-slide" alt="LET'S PLAY GAMES">
+      <img src="ad4.png" class="ad-slide" alt="AND GET LOT OF FUN">
+      <img src="ad5.png" class="ad-slide" alt="ARE YOU READY!">
+    </div>
+  </div>
+</section>
+
+<main class="game-grid" id="games">
+  <a href="blockcraft.html" class="game-slot" data-reveal style="--slot-hue: 205;">
+    <span class="slot-frame"></span>
+    <span class="slot-img" aria-hidden="true" style="background:url('blockcraft.png') center/cover no-repeat;"></span>
+    <span class="slot-title">BLOCKCRAFT</span>
+  </a>
+  <a href="bhoolbhulaiya.html" class="game-slot" data-reveal style="--slot-hue: 350;">
+    <span class="slot-frame"></span>
+    <span class="slot-img" aria-hidden="true" style="background:url('bhoolbhulaiya.png') center/cover no-repeat;">
+      <span class="slot-num"></span>
+      <span class="slot-hint">BHOOLBHULAIYA</span>
+    </span>
+  </a>
+  <a href="mamory.html" class="game-slot" data-reveal style="--slot-hue: 45;">
+    <span class="slot-frame"></span>
+    <span class="slot-img" aria-hidden="true" style="background:url('mamory.png') center/cover no-repeat;">
+      <span class="slot-num"></span>
+      <span class="slot-hint"></span>
+    </span>
+  </a>
+</main>
+
+<footer class="site-footer">
+  <nav class="footer-links">
+    <a href="about.html">About Us</a>
+    <a href="privacy.html">Privacy Policy</a>
+    <a href="terms.html">Terms &amp; Conditions</a>
+    <a href="contact.html">Contact Us</a>
+  </nav>
+  <p class="footer-copy">© <span id="year"></span> Dasev Games. All rights reserved.</p>
+</footer>
+
+<script src="script.js"></script>
+<script>
+(function () {
+  var slides = document.querySelectorAll('#ad-slideshow .ad-slide');
+  if (!slides.length) return;
+  var current = 0;
+  setInterval(function () {
+    slides[current].classList.remove('active');
+    current = (current + 1) % slides.length;
+    slides[current].classList.add('active');
+  }, 3000); // slide changes every 3 seconds
+})();
+</script>
+</body>
+</html>
